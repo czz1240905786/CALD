@@ -58,6 +58,9 @@ class RoIHeads(_RoIHeads):
             boxes = boxes[:, 1:]
             scores = scores[:, 1:]
             labels = labels[:, 1:]
+            # boxes = boxes[:, :-1]
+            # scores = scores[:, :-1]
+            # labels = labels[:, :-1]
 
             props = props.unsqueeze(1).expand(props.shape[0], boxes.shape[1], props.shape[1])
             # batch everything, by making every class prediction be a separate instance
@@ -272,6 +275,7 @@ class FRCNN_Feature(FasterRCNN):
                 self._has_warned = True
             return (losses, detections)
         else:
+            # # type: (Dict[str, Tensor], List[Dict[str, Tensor]]) -> Union[Dict[str, Tensor], List[Dict[str, Tensor]]]
             return self.eager_outputs(losses, detections)
 
 

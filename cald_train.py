@@ -36,6 +36,7 @@ from ll4al.data.sampler import SubsetSequentialSampler
 from detection.frcnn_la import fasterrcnn_resnet50_fpn_feature
 from detection.retinanet_cal import retinanet_mobilenet, retinanet_resnet50_fpn_cal
 import pdb
+from tqdm import tqdm
 
 def train_one_epoch(task_model, task_optimizer, data_loader, device, cycle, epoch, print_freq):
     # 设置self.trainning为True
@@ -51,7 +52,7 @@ def train_one_epoch(task_model, task_optimizer, data_loader, device, cycle, epoc
         warmup_iters = min(1000, len(data_loader) - 1)
         task_lr_scheduler = utils.warmup_lr_scheduler(task_optimizer, warmup_iters, warmup_factor)
 
-    for images, targets in metric_logger.log_every(data_loader, print_freq, header):
+    for images, targets, paths in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         task_loss_dict = task_model(images, targets)
@@ -90,6 +91,9 @@ def calcu_iou(A, B):
 
 
 def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
+    '''
+
+    '''
     for aug in augs:
         if aug not in ['flip', 'multi_ga', 'color_adjust', 'color_swap', 'multi_color_adjust', 'multi_sp', 'cut_out',
                        'multi_cut_out', 'multi_resize', 'larger_resize', 'smaller_resize', 'rotation', 'ga', 'sp']:
@@ -100,25 +104,29 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
         mean_all = []
         #  TODO: second stage Metric
         cls_all = []
-        for images, _ in unlabeled_loader:
+        for images, _, _ in tqdm(unlabeled_loader):
             torch.cuda.synchronize()
             # only support 1 batch size
             aug_images = []
             aug_boxes = []
+            # batch_size=1 原则上不需要写for
             for image in images:
                 # TODO: 🔖 A(M(x))
                 # output = task_model([F.to_tensor(image).cuda()])
                 output = task_model([image.cuda()])
+                # 这里首先提取出image图片的模型运算结果
                 ref_boxes, prob_max, ref_scores_cls, ref_labels, ref_scores = output[0]['boxes'], output[0][
                     'prob_max'], output[0]['scores_cls'], output[0]['labels'], output[0]['scores']
                 if len(ref_scores) > 40:
                     inds = np.round(np.linspace(0, len(ref_scores) - 1, 50)).astype(int)
                     ref_boxes, prob_max, ref_scores_cls, ref_labels, ref_scores = ref_boxes[inds], prob_max[
                         inds], ref_scores_cls[inds], ref_labels[inds], ref_scores[inds]
-                cls_corr = [0] * (num_cls - 1)
+                cls_corr = [0] * (num_cls)
+                # cls_corr = [0] * (num_cls - 1)
+                # pdb.set_trace()
                 # 🌟 统计A(M(x))图片中类的分布
                 for s, l in zip(ref_scores, ref_labels):
-                    cls_corr[l - 1] = max(cls_corr[l - 1], s.item())
+                    cls_corr[l-1] = max(cls_corr[l-1], s.item())
                 cls_corrs = [cls_corr]
                 if output[0]['boxes'].shape[0] == 0:
                     consistency_all.append(0.0)
@@ -189,6 +197,7 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                 # TODO: 🔖 M(A(x))
                 outputs = []
                 for aug_image in aug_images:
+                    # 虽然原图只有一张，但是aug_image有4张
                     outputs.append(task_model([aug_image])[0])
                 consistency_aug = []
                 mean_aug = []
@@ -197,9 +206,10 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                     mean_img = []
                     boxes, scores_cls, pm, labels, scores = output['boxes'], output['scores_cls'], output['prob_max'], \
                                                             output['labels'], output['scores']
-                    cls_corr = [0] * (num_cls - 1)
+                    cls_corr = [0] * (num_cls)
+                    # cls_corr = [0] * (num_cls - 1)
                     for s, l in zip(scores, labels):
-                        cls_corr[l - 1] = max(cls_corr[l - 1], s.item())
+                        cls_corr[l-1] = max(cls_corr[l-1], s.item())
                     cls_corrs.append(cls_corr)
                     if len(boxes) == 0:
                         consistency_aug.append(0.0)
@@ -234,23 +244,32 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                 consistency_all.append(np.mean(consistency_aug))
                 mean_all.append(mean_aug)
                 # 类别分布做平均
+                # pdb.set_trace()
                 cls_corrs = np.mean(np.array(cls_corrs), axis=0)
+                # cls_corrs的维度为(5,6)，5是因为 1原图+4增强 ，6是因为六个类别
                 cls_all.append(cls_corrs)
     mean_aug = np.mean(mean_all, axis=0)
     print(mean_aug)
+    # pdb.set_trace()
+    # consistency_all(num_img) cls_all(num_img,6)
     return consistency_all, cls_all
 
 
 def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
     cls_inds = []
     result = []
-    pdb.set_trace()
+    # pdb.set_trace()
     # 计算labeled pool中的概率分布
-    for _, targets in labeled_loader:
+    for _, targets, _ in labeled_loader:
         for target in targets:
             cls_corr = [0] * cls_corrs[0].shape[0]
+            # try:
+            #     cls_corr = [0] * cls_corrs[0].shape[0]
+            # except:
+            #     pdb.set_trace()
+            # 这是class的数量
             for l in target['labels']:
-                cls_corr[l - 1] += 1
+                cls_corr[l-1] += 1
             result.append(cls_corr)
         # with open("vis/mutual_cald_label_{}_{}_{}_{}.txt".format(args.uniform, args.model, args.dataset, cycle),
         #           "wb") as fp:  # Pickling
@@ -262,6 +281,7 @@ def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
         # batch cls_corrs together to accelerate calculating
         KLDivLoss = nn.KLDivLoss(reduction='none')
         _cls_corrs = torch.tensor(cls_corrs)
+        # result按照输入图像的数量做一个均值
         _result = torch.tensor(np.mean(np.array(result), axis=0)).unsqueeze(0)
         if args.uniform:
             p = torch.nn.functional.softmax(_result + _cls_corrs, -1)
@@ -277,7 +297,7 @@ def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
             log_mean = ((p + q) / 2).log()
             jsdiv = torch.sum(KLDivLoss(log_mean, p), dim=1) / 2 + torch.sum(KLDivLoss(log_mean, q), dim=1) / 2
             jsdiv[cls_inds] = -1
-            max_ind = torch.argmax(jsdiv).item()
+            max_ind = torch.argmax(jsdiv).item() # 选取argmax最大
             cls_inds.append(max_ind)
         # result.append(cls_corrs[max_ind])
     return cls_inds
@@ -303,12 +323,15 @@ def main(args):
         dataset_test, _ = get_dataset(args.dataset, "test", get_transform(train=False), args.data_path)
     else:
         dataset, num_classes = get_dataset(args.dataset, "train", get_transform(train=True), args.data_path)
+        # dataset, num_classes = get_dataset(args.dataset, "valid", get_transform(train=True), args.data_path)
         dataset_aug, _ = get_dataset(args.dataset, "valid", None, args.data_path)
         dataset_test, _ = get_dataset(args.dataset, "test", get_transform(train=False), args.data_path)
+        # dataset_test, _ = get_dataset(args.dataset, "testtmp", get_transform(train=False), args.data_path)
     # import pdb; pdb.set_trace()
     print("Creating data loaders")
     # TODO: 初始化训练集以及主动学习人工标注的上限
-    num_images = len(dataset)
+    num_images_labeled = len(dataset)
+    num_images_unlabeled = len(dataset_aug)
     if 'voc' in args.dataset:
         init_num = 500
         budget_num = 500
@@ -317,17 +340,37 @@ def main(args):
             budget_num = 500
     else:
         init_num = 500
-        budget_num = 1000
-    indices = list(range(num_images))
+        budget_num = 500
+        oracle_num = 500
+        # init_num = 50
+        # budget_num = 100
+    # 此处indices是包含所有labeled_pool和unlabeled_pool的图片
+    # indices = list(range(num_images_labeled+num_images_unlabeled))
+    # 此处的原始indices写法
+    indices = list(range(num_images_labeled))
+
+    # 此处记得删除，用于调试
+    # indices = indices[:200]
     # python中list、dict、object按照引用传递的
-    random.shuffle(indices)
+    
+    # 此处不需要shuffle，因为下面采样的时候是随机采样的
+    # random.shuffle(indices)
     # TODO: labeled pool
     labeled_set = indices[:init_num]
+    oracle_set = list()
     # TODO: unlabed pool
     unlabeled_set = list(set(indices) - set(labeled_set))
+    # SubsetRandomSampler: Returns a random permutation of integers from 0 to n - 1.
+    # 也就是说这样这里还是会全部遍历的，只是遍历的顺序是随机的
     train_sampler = SubsetRandomSampler(labeled_set)
+
+    indices_test = list(range(len(dataset_test)))
+    # pdb.set_trace()
+    # SequentialSampler: Samples elements sequentially, always in the same order.
     data_loader_test = DataLoader(dataset_test, batch_size=1, sampler=SequentialSampler(dataset_test),
                                   num_workers=args.workers, collate_fn=utils.collate_fn)
+    # data_loader_test = DataLoader(dataset_test, batch_size=1, sampler=SubsetSequentialSampler(indices_test[:100]),
+    #                               num_workers=args.workers, collate_fn=utils.collate_fn)
     augs = []
     if 'F' in args.augs:
         augs.append('flip')
@@ -360,7 +403,8 @@ def main(args):
                 task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=600, max_size=1000)
         else:
             if 'faster' in args.model:
-                task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes, min_size=800, max_size=1333)
+                # 此处的num_classes应该考虑背景类，因为目标检测的框难免框住背景类
+                task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes+1, min_size=800, max_size=1333)
             elif 'retina' in args.model:
                 task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=800, max_size=1333)
         task_model.to(device)
@@ -390,7 +434,9 @@ def main(args):
                                               num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
                 # TODO: Metric
                 uncertainty, _cls_corrs = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
+                # 首先按照uncertainty从小到大排序
                 arg = np.argsort(np.array(uncertainty))
+                # 选择一批略大于budget_num的数据，得到对应的类别分布
                 cls_corrs_set = arg[:int(args.mr * budget_num)]
                 cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
                 labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
@@ -454,14 +500,31 @@ def main(args):
         if not args.no_mutual:
             # unlabeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(subset),
             #                               num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+
+            # SubsetSequentialSampler:Samples elements sequentially from a given list of indices, without replacement
             unlabeled_loader = DataLoader(dataset, batch_size=1, sampler=SubsetSequentialSampler(subset),
                                           num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
             # pdb.set_trace()
             uncertainty, _cls_corrs = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
             # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
             #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-            arg = np.argsort(np.array(uncertainty))
-            cls_corrs_set = arg[:int(args.mr * budget_num)]
+            # 此部分应该对uncertainty正向排序，因为这些图特别不准，因此应该放到oracle_pool里面
+            arg_oracle = np.argsort(np.array(uncertainty))
+            tobe_oracle_set = arg_oracle[:int(oracle_num)]
+            tobe_oracle_set = list(torch.tensor(subset)[tobe_oracle_set].numpy())
+            oracle_set += tobe_oracle_set
+            oracle_loader = DataLoader(dataset, batch_size=1, sampler=SubsetSequentialSampler(oracle_set),
+                                          num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+            with open("/data01/zyh/ALDataset/annotations/oracle_imgid.txt","w") as fp:
+                for _,_,paths in oracle_loader:
+                    for path in paths:
+                        fp.write(path)
+                        fp.write('\n')
+            # pdb.set_trace()
+
+            # 此处应该对uncertainty反向排序，用作labeled_pool的一部分
+            arg = np.argsort(-np.array(uncertainty))
+            cls_corrs_set = arg[:int(args.mr * budget_num)] # mutual range
             cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
             # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
             #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
@@ -471,7 +534,13 @@ def main(args):
             # Update the labeled dataset and the unlabeled dataset, respectively
             tobe_labeled_set = list(torch.tensor(subset)[arg][tobe_labeled_set].numpy())
             labeled_set += tobe_labeled_set
-            unlabeled_set = list(set(indices) - set(labeled_set))
+            unlabeled_set = list(set(indices) - set(labeled_set) - set(oracle_set))
+            unlabeled_loader = DataLoader(dataset, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
+                                        num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+            with open("/data01/zyh/ALDataset/annotations/unlabeled_imgid.txt","w") as fp:
+                for _,_,paths in unlabeled_loader:
+                    for path in paths:
+                        fp.write(path)
         else:
             unlabeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(subset),
                                           num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
@@ -495,8 +564,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__)
 
-    parser.add_argument('-p', '--data-path', default='/data/yuweiping/coco/', help='dataset path')
-    parser.add_argument('--dataset', default='voc2007', help='dataset')
+    parser.add_argument('-p', '--data-path', default='/data01/zxl/KeyVehicleDetection/dataset/BITVehicle_Dataset/', help='dataset path')
+    parser.add_argument('--dataset', default='coco', help='dataset')
     parser.add_argument('--model', default='fasterrcnn_resnet50_fpn', help='model')
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument('-b', '--batch-size', default=4, type=int,
@@ -506,11 +575,11 @@ if __name__ == "__main__":
     #                     help='path to save checkpoint of first cycle')
     parser.add_argument('--task_epochs', default=26, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('-e', '--total_epochs', default=20, type=int, metavar='N',
+    parser.add_argument('-e', '--total_epochs', default=1, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('--cycles', default=7, type=int, metavar='N',
+    parser.add_argument('--cycles', default=5, type=int, metavar='N',
                         help='number of cycles epochs to run')
-    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--lr', default=0.0025, type=float,
                         help='initial learning rate, 0.02 is the default value for training '
@@ -527,7 +596,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr-gamma', default=0.1, type=float, help='decrease lr by a factor of lr-gamma')
     parser.add_argument('--print-freq', default=1000, type=int, help='print frequency')
     # TODO: output_dir / results
-    parser.add_argument('--output-dir', default=None, help='path where to save')
+    parser.add_argument('--output-dir', default='out1', help='path where to save')
     parser.add_argument('--resume', default='', help='resume from checkpoint')
     parser.add_argument('-rp', '--results-path', default='results',
                         help='path to save detection results (only for voc)')

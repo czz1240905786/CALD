@@ -212,22 +212,23 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         self._transforms = transforms
 
     def __getitem__(self, idx):
-        img, target = super(CocoDetection, self).__getitem__(idx)
+        img, target, path = super(CocoDetection, self).__getitem__(idx)
         # import pdb;pdb.set_trace()
         image_id = self.ids[idx]
+        # 此处的target是一个字典，因此需要遍历
         target = dict(image_id=image_id, annotations=target)
         if self._transforms is not None:
             img, target = self._transforms(img, target)
-        return img, target
+        return img, target, path
 
 
 def get_coco(root, image_set, transforms, mode='annotation'):
-    anno_file_template = "{}_{}.json"
+    anno_file_template = "{}_{}_new.json"
     PATHS = {
         "train": ("train", os.path.join("annotations", anno_file_template.format("train", mode))),
         "valid": ("valid", os.path.join("annotations", anno_file_template.format("valid", mode))),
-        "test": ("test", os.path.join("annotations", anno_file_template.format("test", mode)))
-        # "test": ("test_tmp", os.path.join("annotations", anno_file_template.format("testtmp", mode)))
+        "test": ("test", os.path.join("annotations", anno_file_template.format("test", mode))),
+        "testtmp": ("test_tmp", os.path.join("annotations", anno_file_template.format("testtmp", mode)))
     }
 
     t = [ConvertCocoPolysToMask()]

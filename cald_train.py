@@ -486,8 +486,8 @@ def main(args):
             budget_num = 500
     else:
         init_num = init_num_
-        budget_num = args.budget_num
-        oracle_num = args.oracle_num
+        budget_num = int(args.budget_num)
+        oracle_num = int(args.oracle_num)
         # init_num = 50
         # budget_num = 100
     # indices改为两个数据集单独做索引

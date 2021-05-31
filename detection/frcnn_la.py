@@ -58,9 +58,6 @@ class RoIHeads(_RoIHeads):
             boxes = boxes[:, 1:]
             scores = scores[:, 1:]
             labels = labels[:, 1:]
-            # boxes = boxes[:, :-1]
-            # scores = scores[:, :-1]
-            # labels = labels[:, :-1]
 
             props = props.unsqueeze(1).expand(props.shape[0], boxes.shape[1], props.shape[1])
             # batch everything, by making every class prediction be a separate instance

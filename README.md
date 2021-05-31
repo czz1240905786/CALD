@@ -24,7 +24,7 @@ python cald_train.py --dataset voc2012 --data-path your_data_path --model faster
 |—— annotations
 |   |—— labeled_annotation.json
 |   |—— test_annotation.json
-|   |—— unlabeled_imgid.txt
+|   |—— unlabeled_imgid.json
 |   |—— oracle_imgid.txt
 |—— unlabeled_pool
 |—— labeled_pool

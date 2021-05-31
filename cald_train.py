@@ -10,7 +10,7 @@ import scipy.stats
 from scipy.stats import gaussian_kde
 import matplotlib.pyplot as plt
 import pickle
-
+import pandas as pd
 import torch
 import torch.utils.data
 from torch import nn
@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 import torchvision.transforms.functional as F
-
+import matplotlib.pyplot as plt
 from detection.coco_utils import get_coco, get_coco_kp
 from detection.group_by_aspect_ratio import GroupedBatchSampler, create_aspect_ratio_groups
 from detection.engine import coco_evaluate, voc_evaluate
@@ -36,11 +36,14 @@ from ll4al.data.sampler import SubsetSequentialSampler
 from detection.frcnn_la import fasterrcnn_resnet50_fpn_feature
 from detection.retinanet_cal import retinanet_mobilenet, retinanet_resnet50_fpn_cal
 import pdb
+import matplotlib
 from tqdm import tqdm
 import os
 import shutil
 import json
 import mmcv
+matplotlib.rcParams['font.sans-serif']=['SimHei']   
+matplotlib.rcParams['axes.unicode_minus']=False     
 
 def train_one_epoch(task_model, task_optimizer, data_loader, device, cycle, epoch, print_freq):
     # 设置self.trainning为True
@@ -94,7 +97,7 @@ def calcu_iou(A, B):
     return iner_area / (Aarea + Barea - iner_area)
 
 
-def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
+def get_uncertainty(task_model, unlabeled_loader, augs, num_cls, args):
     '''
     Arguments:
         task_model (nn.Module): model for evaluation
@@ -121,8 +124,9 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
         #  TODO: second stage Metric
         cls_all = []
         outputs_all = []
+        
         for images, _, _ in tqdm(unlabeled_loader):
-
+            
             torch.cuda.synchronize()
             # only support 1 batch size
             aug_images = []
@@ -131,10 +135,10 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
             for image in images:
                 # TODO: 🔖 A(M(x))
                 output = task_model([F.to_tensor(image).cuda()])
-                # 目前一张图片只会有一个标注
+                # 目前一张图片只会有一个标?
                 outputs_all.append([output[0]['boxes'].cpu().numpy(),output[0]['labels'].cpu().numpy(),output[0]['scores'].cpu().numpy()])
                 # output = task_model([image.cuda()])
-                # 这里首先提取出image图片的模型运算结果
+                # 这里首先提取出image图片的模型运算结�?
                 # pdb.set_trace()
                 ref_boxes, prob_max, ref_scores_cls, ref_labels, ref_scores = output[0]['boxes'], output[0][
                     'prob_max'], output[0]['scores_cls'], output[0]['labels'], output[0]['scores']
@@ -145,7 +149,7 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                         inds], ref_scores_cls[inds], ref_labels[inds], ref_scores[inds]
                 cls_corr = [0] * (num_cls)
                 # cls_corr = [0] * (num_cls - 1)
-                # 得到每个每个类对应的最大得分
+                # 得到每个每个类对应的最大得�?
                 for s, l in zip(ref_scores, ref_labels):
                     cls_corr[l-1] = max(cls_corr[l-1], s.item())
                 cls_corrs = [cls_corr]
@@ -218,7 +222,7 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                 # TODO: 🔖 M(A(x))
                 outputs = []
                 for aug_image in aug_images:
-                    # 虽然原图只有一张，但是aug_image有4张
+                    # 虽然原图只有一张，但是aug_image�?�?
                     outputs.append(task_model([aug_image])[0])
                 consistency_aug = []
                 mean_aug = []
@@ -261,12 +265,12 @@ def get_uncertainty(task_model, unlabeled_loader, augs, num_cls):
                             torch.max(iou) + 0.5 * (1 - js) * (ref_pm + pm[torch.argmax(iou)])).item())
                     consistency_aug.append(np.mean(consistency_img))
                     mean_aug.append(np.mean(mean_img))
-                # 对于数据增强做平均
+                # 对于数据增强做平�?
                 consistency_all.append(np.mean(consistency_aug))
                 mean_all.append(mean_aug)
-                # 类别分布做平均
+                # 类别分布做平�?
                 cls_corrs = np.mean(np.array(cls_corrs), axis=0)
-                # cls_corrs的维度为(5,6)，5是因为 1原图+4增强 ，6是因为六个类别
+                # cls_corrs的维度为(5,6)�?是因�?1原图+4增强 �?是因为六个类�?
                 cls_all.append(cls_corrs)
     mean_aug = np.mean(mean_all, axis=0)
     print(mean_aug)
@@ -282,11 +286,12 @@ def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
     for _, targets, _ in labeled_loader:
         for target in targets:
             cls_corr = [0] * cls_corrs[0].shape[0]
+            
             # try:
             #     cls_corr = [0] * cls_corrs[0].shape[0]
             # except:
             #     pdb.set_trace()
-            # 这是class的数量
+            # 这是class的数�?
             for l in target['labels']:
                 cls_corr[l-1] += 1
             result.append(cls_corr)
@@ -295,12 +300,13 @@ def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
         # pickle.dump(result, fp)
     for a in list(np.where(np.sum(cls_corrs, axis=1) == 0)[0]):
         cls_inds.append(a)
+        # pdb.set_trace()
         # result.append(cls_corrs[a])
     while len(cls_inds) < budget:
         # batch cls_corrs together to accelerate calculating
         KLDivLoss = nn.KLDivLoss(reduction='none')
         _cls_corrs = torch.tensor(cls_corrs)
-        # result按照输入图像的数量做一个均值
+        # result按照输入图像的数量做一个均�?
         _result = torch.tensor(np.mean(np.array(result), axis=0)).unsqueeze(0)
         if args.uniform:
             p = torch.nn.functional.softmax(_result + _cls_corrs, -1)
@@ -316,14 +322,14 @@ def cls_kldiv(labeled_loader, cls_corrs, budget, cycle):
             log_mean = ((p + q) / 2).log()
             jsdiv = torch.sum(KLDivLoss(log_mean, p), dim=1) / 2 + torch.sum(KLDivLoss(log_mean, q), dim=1) / 2
             jsdiv[cls_inds] = -1
-            max_ind = torch.argmax(jsdiv).item() # 选取argmax最大
+            max_ind = torch.argmax(jsdiv).item() # 选取argmax最?
             cls_inds.append(max_ind)
         # result.append(cls_corrs[max_ind])
     return cls_inds
 
 def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/annotations/train_annotation_gpl.json",
               img_id: int = None, anno_id: int = None, bboxes: np.ndarray = None, scores : np.ndarray = None,
-              labeles: np.ndarray = None, trick: str = "threshold", output_all : list = None):
+              labeles: np.ndarray = None, trick: str = "threshold", output_all : list = None,cycle = 0,args=None):
     """
     Arguments:
         file (str): file to be saved
@@ -338,10 +344,17 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
             bboxes:  output_all[:,0,100,4]
             labeles: output_all[:,1,100, ]
             scores:  output_all[:,2,100, ]
+            len(output_all)=60 len(output_all[0])=3
+            后面的维数为ndarray
     Returns:
         None
     """
-
+    try:
+        os.mkdir('./result_image/cycle'+str(cycle))
+    except:
+        print('cycle'+str(cycle)+' already exist!')
+    score_all_ = []
+    scores_ = []
     if 'train' in file:
 
         train_annotation = mmcv.load(file)
@@ -362,7 +375,7 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
         paths_ = []
         for i, (img, _ , paths) in enumerate(dataloader):
             # modify annotaion file
-
+            
             # batch
             for ind in range(len(paths)):
                 img_id += 1
@@ -372,24 +385,47 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
                 if trick == 'threshold':
                     # （M,)
                     scores = output_all[i][2]
-                    index = scores > 0.6
-
+                    if eval(args.debug):
+                        index = scores > 0
+                    else:
+                        index = scores > 0.6
+                    scores_.append(scores)
+                    for sco in scores:
+                        score_all_.append(sco)
                     bboxes = output_all[i][0][index]
                     labels = output_all[i][1][index]
+                    img___ = mmcv.imread(np.array(img[0]))
+                    
+                    a = mmcv.imshow_det_bboxes(img___,bboxes,labels,show=False,bbox_color='blue',thickness=3,
+                      font_scale=2)
+                    mmcv.imwrite(a,'./result_image/cycle'+str(cycle)+'/image'+str(i)+'cycle'+str(cycle)+'.png')
                     for j in range(len(labels)):  # len(output_all[i][0]) = M  <-> num of bboxes
 
                         anno_id += 1
                         train_annotation['annotations'].append(dict(id=anno_id, image_id=img_id,
-                                                                    category_id=labels[j], bbox=bboxes[j]))
-
+                                                                    category_id=labels[j], area=bboxes[j,2]*bboxes[j,3], 
+                                                                    bbox=bboxes[j], iscrowd=0))
+                    # pdb.set_trace()
                 paths_.append(paths[ind])
                 # move imgs from valid_folder to train_folder
                 shutil.move(os.path.join(imgfolder_valid,paths[ind]),os.path.join(imgfolder_train,paths[ind]))
-
+        scorce_csv = pd.DataFrame({'score':scores_})
+        scorce_csv.to_csv('/home/czz/AL/CALD/result/scores_output_cycle'+str(cycle)+'.csv')
+        index_score = np.array(score_all_)>0.6
+        score_all_0_6 = np.array(score_all_)[index_score]
+        percent = len(list(score_all_0_6))/len(score_all_)
+        print('cycle:percent(>0.6) = '+str(percent*100)+'%')
+        plt.figure()
+        plt.hist(np.array(score_all_0_6), bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
+        plt.savefig('./result_image/cycle_0_6_'+str(cycle)+'.png')
+        plt.figure()
+        plt.hist(np.array(score_all_), bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
+        plt.savefig('./result_image/cycle_'+str(cycle)+'.png')
         paths = list(map(lambda x: x + '\n',paths_))
         with open(os.path.dirname(file) + '/labeled_imgid.txt','w+') as f:
-            f.write("".join(paths))
+           f.write("".join(paths))
         mmcv.dump(train_annotation,file)
+    return percent
 
 def updateoracle(dataloader, oracle_anno: str = "/data01/gpl/ALDataset/BITVehicle_Dataset/annotations/oracle_imgid.txt",
                  valid_pool = "/data01/gpl/ALDataset/BITVehicle_Dataset/valid/",
@@ -433,26 +469,32 @@ def main(args):
         # dataset_test, _ = get_dataset(args.dataset_labeled, "testtmp", get_transform(train=False), args.data_path)
     # import pdb; pdb.set_trace()
     print("Creating data loaders")
-    # TODO: 初始化训练集以及主动学习人工标注的上限
+    # TODO: 初始化训练集以及主动学习人工标注的上?
     num_images_labeled = len(dataset_labeled)
     num_images_unlabeled = len(dataset_unlabeled)
+    # pdb.set_trace()
+    init_num_ = 500
+    try:
+        init_num_ = args.initlabeled
+    except:
+        print('w**********w')
     if 'voc' in args.dataset:
-        init_num = 500
+        init_num = init_num_
         budget_num = 500
         if 'retina' in args.model:
             init_num = 1000
             budget_num = 500
     else:
-        init_num = 500
-        budget_num = 60
-        oracle_num = 50
+        init_num = init_num_
+        budget_num = args.budget_num
+        oracle_num = args.oracle_num
         # init_num = 50
         # budget_num = 100
     # indices改为两个数据集单独做索引
     indices_labeled = list(range(num_images_labeled))
-    # 保证indeces的唯一性
+    # 保证indeces的唯一�?
     indices_unlabeled = list(range(num_images_unlabeled))
-    # 首先只取前100个做索引
+    # 首先只取�?00个做索引
     # indices_unlabeled = list(range(100))
     # 此处的原始indices写法
     # indices = list(range(num_images_labeled))
@@ -465,8 +507,11 @@ def main(args):
     labeled_set = indices_labeled[:init_num]
     oracle_set = list()
     # TODO: unlabeled pool
-    # 此处将100个交给unlabeled_set
-    unlabeled_set = indices_unlabeled
+    # 此处�?00个交给unlabeled_set
+    if eval(args.debug):
+        unlabeled_set = indices_unlabeled[:155]
+    else:
+        unlabeled_set = indices_unlabeled
     # SubsetRandomSampler: Returns a random permutation of integers from 0 to n - 1.
     # 也就是说这样这里还是会全部遍历的，只是遍历的顺序是随机的
     train_sampler = SubsetRandomSampler(labeled_set)
@@ -492,9 +537,11 @@ def main(args):
 
     print("Creating model")
     # 此处的num_classes应该考虑背景类，因为目标检测的框难免框住背景类
+    # num_classes (int): number of output classes (including background)
     task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes+1, min_size=800, max_size=1333)
     task_model.to(device)
-    # TODO: 循环开始
+    # TODO: 循环开�?
+    percent_all=[]
     for cycle in range(args.cycles):
         # aspect_ratio_group_factor = 3
         if args.aspect_ratio_group_factor >= 0:
@@ -509,105 +556,7 @@ def main(args):
 
         data_loader = torch.utils.data.DataLoader(dataset_labeled, batch_sampler=train_batch_sampler, num_workers=args.workers,
                                                   collate_fn=utils.collate_fn)
-        # pdb.set_trace()
-        # len(data_loader) 125
-        # 原始创建模型写法
-        # print("Creating model")
-        # if 'voc' in args.dataset:
-        #     if 'faster' in args.model:
-        #         task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes, min_size=600, max_size=1000)
-        #     elif 'retina' in args.model:
-        #         task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=600, max_size=1000)
-        # else:
-        #     if 'faster' in args.model:
-        #         # 此处的num_classes应该考虑背景类，因为目标检测的框难免框住背景类
-        #         task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes+1, min_size=800, max_size=1333)
-        #     elif 'retina' in args.model:
-        #         task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=800, max_size=1333)
-        # task_model.to(device)
-        # if cycle == 0 and args.skip:
-        #     if 'faster' in args.model:
-        #         checkpoint = torch.load(os.path.join(args.output_dir,
-        #                                              '{}_frcnn_1st.pth'.format(args.dataset)), map_location='cpu')
-        #     elif 'retina' in args.model:
-        #         checkpoint = torch.load(os.path.join(args.output_dir,
-        #                                              '{}_retinanet_1st.pth'.format(args.dataset)), map_location='cpu')
-        #     task_model.load_state_dict(checkpoint['model'])
-        #     if args.test_only:
-        #         if 'coco' in args.dataset:
-        #             coco_evaluate(task_model, data_loader_test)
-        #         elif 'voc' in args.dataset:
-        #             voc_evaluate(task_model, data_loader_test, args.dataset, False, path=args.results_path)
-        #         return
-        #     # 开始检验
-        #     print("Getting stability")
-        #     random.shuffle(unlabeled_set)
-        #     if not args.no_mutual:
-        #         unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
-        #                                       num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         # TODO: Metric
-        #         uncertainty, _cls_corrs,outputs_all = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
-
-        #         # arg_oracle = np.argsort(np.array(uncertainty))
-        #         # tobe_oracle_set = arg_oracle[:int(oracle_num)]
-        #         # tobe_oracle_set = list(torch.tensor(unlabeled_set)[tobe_oracle_set].numpy())
-        #         # oracle_set += tobe_oracle_set
-        #         # oracle_loader = DataLoader(dataset_unlabeled, batch_size=1,
-        #         #                            sampler=SubsetSequentialSampler(tobe_oracle_set),
-        #         #                            num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         # updateoracle(oracle_loader)
-
-
-        #         # 首先按照uncertainty从小到大排序
-        #         arg = np.argsort(np.array(uncertainty))
-        #         # 选择一批略大于budget_num的数据，得到对应的类别分布
-        #         cls_corrs_set = arg[:int(args.mr * budget_num)]
-        #         cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
-
-        #         labeled_loader = DataLoader(dataset_labeled, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
-        #                                     num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         tobe_labeled_set = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
-        #         # Update the labeled dataset_labeled and the unlabeled dataset_labeled, respectively
-        #         tobe_labeled_set = list(torch.tensor(unlabeled_set)[arg][tobe_labeled_set].numpy())
-        #         labeled_set += list(range(len(labeled_set),len(labeled_set)+len(tobe_labeled_set)))
-        #         unlabeled_set = list(set(unlabeled_set) - set(tobe_labeled_set))
-
-        #         # arg = np.argsort(-np.array(uncertainty))
-        #         # cls_corrs_set = arg[:int(args.mr * budget_num)]  # mutual range
-        #         # cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
-        #         # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
-        #         #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         # labeled_loader = DataLoader(dataset_labeled, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
-        #         #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         # tobe_labeled_set = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
-        #         # tobe_labeled_set = list(torch.tensor(unlabeled_set)[arg][tobe_labeled_set].numpy())
-        #         # outputs_all = [outputs_all[i] for i in arg]
-        #         # tobe_labeled_set_loader = DataLoader(dataset_unlabeled, batch_size=1,
-        #         #                                      sampler=SubsetSequentialSampler(tobe_labeled_set),
-        #         #                                      num_workers=args.workers, pin_memory=True,
-        #         #                                      collate_fn=utils.collate_fn)
-        #         # save2file(tobe_labeled_set_loader, output_all=outputs_all)
-        #         # unlabeled_set = list(set(unlabeled_set) - set(tobe_oracle_set) - set(tobe_labeled_set))
-        #         # unlabeled_set = list(range(len(unlabeled_set)))
-        #         # unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1,
-        #         #                               sampler=SubsetSequentialSampler(unlabeled_set),
-        #         #                               num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         # labeled_set += list(range(len(labeled_set), len(labeled_set) + len(tobe_labeled_set)))
-        #         # print("first cycle finished!")
-
-        #     else:
-        #         unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
-        #                                       num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-        #         uncertainty, _,_ = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
-        #         arg = np.argsort(np.array(uncertainty))
-        #         # Update the labeled dataset_labeled and the unlabeled dataset_labeled, respectively
-        #         labeled_set += list(torch.tensor(unlabeled_set)[arg][:budget_num].numpy())
-        #         labeled_set = list(set(labeled_set))
-        #         unlabeled_set = list(set(unlabeled_set) - set(tobe_labeled_set))
-
-        #     # Create a new dataloader for the updated labeled dataset_labeled
-        #     train_sampler = SubsetRandomSampler(labeled_set)
-        #     continue
+#####################################################################################in the last part
         params = [p for p in task_model.parameters() if p.requires_grad]
         task_optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
         task_lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(task_optimizer, milestones=args.lr_steps,
@@ -621,27 +570,28 @@ def main(args):
         #     return
         print("Start training")
         start_time = time.time()
-        # TODO: 开始训练
+        # TODO: 开始训�?
         for epoch in range(args.start_epoch, args.total_epochs):
             train_one_epoch(task_model, task_optimizer, data_loader, device, cycle, epoch, args.print_freq)
             task_lr_scheduler.step()
             # evaluate after pre-set epoch
             # 在调试阶段，此处删除test部分
-            if (epoch + 1) == args.total_epochs:
-                if 'coco' in args.dataset:
-                    coco_evaluate(task_model, data_loader_test)
-                elif 'voc' in args.dataset:
-                    voc_evaluate(task_model, data_loader_test, args.dataset_labeled, False, path=args.results_path)
-        # if not args.skip and cycle == 0:
-        #     if 'faster' in args.model:
-        #         utils.save_on_master({
-        #             'model': task_model.state_dict(), 'args': args},
-        #             os.path.join(args.output_dir, '{}_frcnn_1st.pth'.format(args.dataset)))
-        #     elif 'retina' in args.model:
-        #         utils.save_on_master({
-        #             'model': task_model.state_dict(), 'args': args},
-        #             os.path.join(args.output_dir, '{}_retinanet_1st.pth'.format(args.dataset)))
-        # 啥也没干呢，又重排一遍
+            if not eval(args.debug):
+                if (epoch + 1) == args.total_epochs:
+                    if 'coco' in args.dataset:
+                        coco_evaluate(task_model, data_loader_test)
+                    elif 'voc' in args.dataset:
+                        voc_evaluate(task_model, data_loader_test, args.dataset_labeled, False, path=args.results_path)
+        if not args.skip and cycle == 0:
+            if 'faster' in args.model:
+                utils.save_on_master({
+                    'model': task_model.state_dict(), 'args': args},
+                    os.path.join(args.output_dir, '{}_frcnn_1st.pth'.format(args.dataset)))
+            elif 'retina' in args.model:
+                utils.save_on_master({
+                    'model': task_model.state_dict(), 'args': args},
+                    os.path.join(args.output_dir, '{}_retinanet_1st.pth'.format(args.dataset)))
+        # 啥也没干呢，又重排一�?
         random.shuffle(unlabeled_set)
         print("Getting stability")
         # 这里是真正开始的地方
@@ -653,18 +603,46 @@ def main(args):
             unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
                                           num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
             # pdb.set_trace()
-            uncertainty, _cls_corrs, outputs_all = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
+            uncertainty, _cls_corrs, outputs_all = get_uncertainty(task_model, unlabeled_loader, augs, num_classes, args)
             # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
             #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
             # 此部分应该对uncertainty正向排序，因为这些图特别不准，因此应该放到oracle_pool里面
             arg_oracle = np.argsort(np.array(uncertainty))
-            tobe_oracle_set = arg_oracle[:int(oracle_num)]
+            tobe_oracle_set_past = arg_oracle[:int(oracle_num)]
             # array([62,  3, 75, 26, 19, 57, 11, 41,  6, 76])
-            tobe_oracle_set = list(torch.tensor(unlabeled_set)[tobe_oracle_set].numpy())
+            tobe_oracle_set = list(torch.tensor(unlabeled_set)[tobe_oracle_set_past].numpy())
             # tensor([66, 58, 14,  1, 48,  2, 31, 73,  0, 70])
             oracle_set += tobe_oracle_set
+            # pdb.set_trace()
             oracle_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(tobe_oracle_set),
                                           num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+            if not eval(args.debug):
+                try:
+                    os.mkdir('./result_image_ora/cycle'+str(cycle))
+                except:
+                    print('cycle'+str(cycle)+' already exist!')
+                score_all_ = []
+                scores_ = []
+                outputs_all_ora = [outputs_all[i] for i in tobe_oracle_set_past]
+                for i, (img, _ , paths) in enumerate(oracle_loader):
+                    
+                    scores = outputs_all_ora[i][2]
+                    scores_.append(scores)
+                    for sco in scores:
+                            score_all_.append(sco)
+                    bboxes = outputs_all_ora[i][0]
+                    labels = outputs_all_ora[i][1]
+                    img___ = mmcv.imread(np.array(img[0]))
+                    
+                    a = mmcv.imshow_det_bboxes(img___,bboxes,labels,show=False,bbox_color='blue',thickness=3,
+                        font_scale=2)
+                    mmcv.imwrite(a,'./result_image_ora/cycle'+str(cycle)+'/image_ora'+str(i)+'cycle'+str(cycle)+'.png')
+                scorce_csv = pd.DataFrame({'score':scores_})
+                scorce_csv.to_csv('/home/czz/AL/CALD/result/scores_output_ora_cycle'+str(cycle)+'.csv')
+                plt.figure()
+                plt.hist(np.array(score_all_), bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
+                plt.savefig('./result_image_ora/cycle_'+str(cycle)+'.png')
+            
             updateoracle(oracle_loader)
             # len(oracle_loader) 100
             # with open("/data01/zyh/ALDataset/BITVehicle_Dataset/annotations/oracle_imgid.txt","w+") as fp:
@@ -686,12 +664,12 @@ def main(args):
             #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
             labeled_loader = DataLoader(dataset_labeled, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
                                         num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
-            tobe_labeled_set = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
-            tobe_labeled_set = list(torch.tensor(unlabeled_set)[cls_corrs_set][tobe_labeled_set].numpy())
+            tobe_labeled_set_past = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
+            tobe_labeled_set = list(torch.tensor(unlabeled_set)[cls_corrs_set][tobe_labeled_set_past].numpy())
 
             # outputs_all = list(torch.tensor(outputs_all)[arg].numpy())
             # pdb.set_trace()
-            outputs_all = [outputs_all[i] for i in cls_corrs_set]
+            outputs_all = [outputs_all[i] for i in cls_corrs_set[tobe_labeled_set_past]]
             # pdb.set_trace()
             # len(tobe_labeled_set) 100
             tobe_labeled_set_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(tobe_labeled_set),
@@ -700,7 +678,9 @@ def main(args):
             # idx_img = []
             # idx_annotation = []
             # pdb.set_trace()
-            save2file(tobe_labeled_set_loader,output_all=outputs_all)
+            
+            percent = save2file(tobe_labeled_set_loader,output_all=outputs_all,cycle = cycle,args=args)
+            percent_all.append(percent)
             # fp_new = open("/data01/zyh/ALDataset/BITVehicle_Dataset/annotations/train_annotation_new.json","w")
             # with open("/data01/zyh/ALDataset/BITVehicle_Dataset/annotations/train_annotation_new.json","r") as f:
             #     data = json.load(f)
@@ -714,7 +694,7 @@ def main(args):
             #         # TODO: file_name
             #         data["images"].append({'id':max_id_img,'width':imgs[0].width,'height':imgs[0].height,'file_name':paths[0]})
             #         # pdb.set_trace()
-            #         # 此处只加入了第一个框和对应的类别，原则上这里应该改用score做阈值
+            #         # 此处只加入了第一个框和对应的类别，原则上这里应该改用score做阈�?
             #         for index in range(len(outputs_all[i][0])):
             #             # box label score
             #             data["annotations"].append({'id':max_id_anno,'image_id':max_id_img,'category_id':outputs_all[i][1][index],'bbox':outputs_all[i][0][index]})
@@ -728,10 +708,12 @@ def main(args):
             # Update the labeled dataset_labeled and the unlabeled dataset_labeled, respectively
 
             unlabeled_set = list(set(unlabeled_set) - set(tobe_oracle_set) - set(tobe_labeled_set))
-            # TODO: 此处unlabeled_set不应该改成连续的，应该保持离散状态
+            print('unlabeled_set : '+str(len(unlabeled_set)))
+            # TODO: 此处unlabeled_set不应该改成连续的，应该保持离散状�?
             # unlabeled_set = list(range(len(unlabeled_set)))
-            # TODO: 此处labeled_set可以改成连续状态，因为在save2file的时候是按照+1的模型往里写的
+            # TODO: 此处labeled_set可以改成连续状态，因为在save2file的时候是按照+1的模型往里写�?
             labeled_set += list(range(len(labeled_set),len(labeled_set)+len(tobe_labeled_set)))
+            print('labeled_set : '+str(len(labeled_set)))
             # TODO:仿照COCO的json格式完整写下来，因为此处unlabeled_loader是完整的
             # with open("/data01/zyh/ALDataset/BITVehicle_Dataset/annotations/valid_annotation_new.json","w") as fp:
             #     dataset_labeled = {'images': [], 'categories': [], 'annotations': []}
@@ -749,7 +731,7 @@ def main(args):
             labeled_set += list(torch.tensor(unlabeled_set)[arg][:budget_num].numpy())
             labeled_set = list(set(labeled_set))
             unlabeled_set = list(set(indices) - set(labeled_set))
-
+        
         dataset_labeled, num_classes = get_dataset(args.dataset, "train", get_transform(train=True), args.data_path)
         dataset_unlabeled, _ = get_dataset(args.dataset, "valid", None, args.data_path)
         dataset_test, _ = get_dataset(args.dataset, "test", get_transform(train=False), args.data_path)
@@ -759,14 +741,22 @@ def main(args):
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         print('Training time {}'.format(total_time_str))
-
+        # mmcv.imshow_det_bboxes()
+        #a = mmcv.imshow_det_bboxes(img,boxes,np.array(['car']))
+        #mmcv.imwrite(a,'D:\\Dian\\test.png')
+    plt.figure()
+    plt.plot(list(range(args.cycles)), percent_all, 'rs-', markersize=10)
+    plt.savefig('./test_all_model.png')
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
         description=__doc__)
-
+    parser.add_argument('--budget-num', default=60, help='num of budget')
+    parser.add_argument('--oracle-num', default=50, help='num of oracle')
+    parser.add_argument('--initlabeled', default=980, help='num of init labeled')
+    parser.add_argument('-d', '--debug', default='False', help='debug quickly')
     parser.add_argument('-p', '--data-path', default='/data01/gpl/ALDataset/BITVehicle_Dataset/', help='dataset path')
     parser.add_argument('--dataset', default='coco', help='dataset')
     parser.add_argument('--model', default='fasterrcnn_resnet50_fpn', help='model')
@@ -776,11 +766,11 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--augs', default='FCDR', help='augmentations')
     # parser.add_argument('-cp', '--first-checkpoint-path', default='/data/yuweiping/coco/',
     #                     help='path to save checkpoint of first cycle')
-    parser.add_argument('--task_epochs', default=26, type=int, metavar='N',
+    parser.add_argument('--task_epochs', default=1, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('-e', '--total_epochs', default=10, type=int, metavar='N',
+    parser.add_argument('-e', '--total_epochs', default=20, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('--cycles', default=5, type=int, metavar='N',
+    parser.add_argument('--cycles', default=10, type=int, metavar='N',
                         help='number of cycles epochs to run')
     parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
@@ -828,3 +818,108 @@ if __name__ == "__main__":
         utils.mkdir(args.output_dir)
 
     main(args)
+
+
+
+
+
+
+            # pdb.set_trace()
+        # len(data_loader) 125
+        # 原始创建模型写法
+        # print("Creating model")
+        # if 'voc' in args.dataset:
+        #     if 'faster' in args.model:
+        #         task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes, min_size=600, max_size=1000)
+        #     elif 'retina' in args.model:
+        #         task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=600, max_size=1000)
+        # else:
+        #     if 'faster' in args.model:
+        #         # 此处的num_classes应该考虑背景类，因为目标检测的框难免框住背景类
+        #         task_model = fasterrcnn_resnet50_fpn_feature(num_classes=num_classes+1, min_size=800, max_size=1333)
+        #     elif 'retina' in args.model:
+        #         task_model = retinanet_resnet50_fpn_cal(num_classes=num_classes, min_size=800, max_size=1333)
+        # task_model.to(device)
+        # if cycle == 0 and args.skip:
+        #     if 'faster' in args.model:
+        #         checkpoint = torch.load(os.path.join(args.output_dir,
+        #                                              '{}_frcnn_1st.pth'.format(args.dataset)), map_location='cpu')
+        #     elif 'retina' in args.model:
+        #         checkpoint = torch.load(os.path.join(args.output_dir,
+        #                                              '{}_retinanet_1st.pth'.format(args.dataset)), map_location='cpu')
+        #     task_model.load_state_dict(checkpoint['model'])
+        #     if args.test_only:
+        #         if 'coco' in args.dataset:
+        #             coco_evaluate(task_model, data_loader_test)
+        #         elif 'voc' in args.dataset:
+        #             voc_evaluate(task_model, data_loader_test, args.dataset, False, path=args.results_path)
+        #         return
+        #     # 开始检�?
+        #     print("Getting stability")
+        #     random.shuffle(unlabeled_set)
+        #     if not args.no_mutual:
+        #         unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
+        #                                       num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         # TODO: Metric
+        #         uncertainty, _cls_corrs,outputs_all = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
+
+        #         # arg_oracle = np.argsort(np.array(uncertainty))
+        #         # tobe_oracle_set = arg_oracle[:int(oracle_num)]
+        #         # tobe_oracle_set = list(torch.tensor(unlabeled_set)[tobe_oracle_set].numpy())
+        #         # oracle_set += tobe_oracle_set
+        #         # oracle_loader = DataLoader(dataset_unlabeled, batch_size=1,
+        #         #                            sampler=SubsetSequentialSampler(tobe_oracle_set),
+        #         #                            num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         # updateoracle(oracle_loader)
+
+
+        #         # 首先按照uncertainty从小到大排序
+        #         arg = np.argsort(np.array(uncertainty))
+        #         # 选择一批略大于budget_num的数据，得到对应的类别分�?
+        #         cls_corrs_set = arg[:int(args.mr * budget_num)]
+        #         cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
+
+        #         labeled_loader = DataLoader(dataset_labeled, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
+        #                                     num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         tobe_labeled_set = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
+        #         # Update the labeled dataset_labeled and the unlabeled dataset_labeled, respectively
+        #         tobe_labeled_set = list(torch.tensor(unlabeled_set)[arg][tobe_labeled_set].numpy())
+        #         labeled_set += list(range(len(labeled_set),len(labeled_set)+len(tobe_labeled_set)))
+        #         unlabeled_set = list(set(unlabeled_set) - set(tobe_labeled_set))
+
+        #         # arg = np.argsort(-np.array(uncertainty))
+        #         # cls_corrs_set = arg[:int(args.mr * budget_num)]  # mutual range
+        #         # cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
+        #         # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
+        #         #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         # labeled_loader = DataLoader(dataset_labeled, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
+        #         #                             num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         # tobe_labeled_set = cls_kldiv(labeled_loader, cls_corrs, budget_num, cycle)
+        #         # tobe_labeled_set = list(torch.tensor(unlabeled_set)[arg][tobe_labeled_set].numpy())
+        #         # outputs_all = [outputs_all[i] for i in arg]
+        #         # tobe_labeled_set_loader = DataLoader(dataset_unlabeled, batch_size=1,
+        #         #                                      sampler=SubsetSequentialSampler(tobe_labeled_set),
+        #         #                                      num_workers=args.workers, pin_memory=True,
+        #         #                                      collate_fn=utils.collate_fn)
+        #         # save2file(tobe_labeled_set_loader, output_all=outputs_all)
+        #         # unlabeled_set = list(set(unlabeled_set) - set(tobe_oracle_set) - set(tobe_labeled_set))
+        #         # unlabeled_set = list(range(len(unlabeled_set)))
+        #         # unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1,
+        #         #                               sampler=SubsetSequentialSampler(unlabeled_set),
+        #         #                               num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         # labeled_set += list(range(len(labeled_set), len(labeled_set) + len(tobe_labeled_set)))
+        #         # print("first cycle finished!")
+
+        #     else:
+        #         unlabeled_loader = DataLoader(dataset_unlabeled, batch_size=1, sampler=SubsetSequentialSampler(unlabeled_set),
+        #                                       num_workers=args.workers, pin_memory=True, collate_fn=utils.collate_fn)
+        #         uncertainty, _,_ = get_uncertainty(task_model, unlabeled_loader, augs, num_classes)
+        #         arg = np.argsort(np.array(uncertainty))
+        #         # Update the labeled dataset_labeled and the unlabeled dataset_labeled, respectively
+        #         labeled_set += list(torch.tensor(unlabeled_set)[arg][:budget_num].numpy())
+        #         labeled_set = list(set(labeled_set))
+        #         unlabeled_set = list(set(unlabeled_set) - set(tobe_labeled_set))
+
+        #     # Create a new dataloader for the updated labeled dataset_labeled
+        #     train_sampler = SubsetRandomSampler(labeled_set)
+        #     continue

@@ -1,6 +1,9 @@
 data/*
 out/*
 *.pth
+result*/
+experiment_cald/
+output.log
 # READ THIS BEFORE YOU REFACTOR ME
 #
 # setup.py uses the list of patterns in this file to decide

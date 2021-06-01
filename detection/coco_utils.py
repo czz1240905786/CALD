@@ -252,7 +252,6 @@ def get_coco(root, image_set, transforms, mode='annotation'):
     # dataset: img, target, path
     dataset = CocoDetection(img_folder, ann_file, transforms=transforms)
     # TODO: 为了解决连续索引问题
-    # dataset.ids = 
 
     if image_set == "train":
         dataset = _coco_remove_images_without_annotations(dataset)

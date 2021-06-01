@@ -28,6 +28,7 @@ from detection.group_by_aspect_ratio import GroupedBatchSampler, create_aspect_r
 from detection.engine import coco_evaluate, voc_evaluate
 from detection import utils
 from detection import transforms as T
+from detection.transforms import xy2wh
 from detection.train import *
 from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.retinanet import retinanet_resnet50_fpn
@@ -403,8 +404,8 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
 
                         anno_id += 1
                         train_annotation['annotations'].append(dict(id=anno_id, image_id=img_id,
-                                                                    category_id=labels[j], area=bboxes[j,2]*bboxes[j,3], 
-                                                                    bbox=bboxes[j], iscrowd=0))
+                                                                    category_id=labels[j], area=(bboxes[j,2]-bboxes[j,0])*(bboxes[j,3]-bboxes[j,1]),
+                                                                    bbox=xy2wh(bboxes[j]), iscrowd=0))
                     # pdb.set_trace()
                 paths_.append(paths[ind])
                 # move imgs from valid_folder to train_folder

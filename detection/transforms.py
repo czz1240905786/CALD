@@ -1,6 +1,6 @@
 import random
 import torch
-
+import numpy as np
 from torchvision.transforms import functional as F
 
 
@@ -48,3 +48,10 @@ class ToTensor(object):
     def __call__(self, image, target):
         image = F.to_tensor(image)
         return image, target
+
+def xy2wh(bboxes):
+    w = bboxes[2]-bboxes[0]
+    h = bboxes[3]-bboxes[1]
+    box=np.array([bboxes[0],bboxes[1],w,h])
+    return box
+

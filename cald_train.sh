@@ -23,3 +23,4 @@ python cald_train.py -p $path --dataset $dataset
 # choose-buffer 显示粘贴缓存区并粘贴选择的缓存区内的内容
 # save-buffer [filename]    保存缓存区的内容到指定文件里
 # scp -r czz@192.168.8.123:/home/czz/AL/CALD/output.log /d/Dian/download-from-43005
+# git push origin main

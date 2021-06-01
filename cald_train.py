@@ -350,6 +350,7 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
     Returns:
         None
     """
+    label_all_=[]
     try:
         os.mkdir('./result_image/cycle'+str(cycle))
     except:
@@ -406,6 +407,7 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
                         train_annotation['annotations'].append(dict(id=anno_id, image_id=img_id,
                                                                     category_id=labels[j], area=(bboxes[j,2]-bboxes[j,0])*(bboxes[j,3]-bboxes[j,1]),
                                                                     bbox=xy2wh(bboxes[j]), iscrowd=0))
+                        label_all_.append(labels[j])
                     # pdb.set_trace()
                 paths_.append(paths[ind])
                 # move imgs from valid_folder to train_folder
@@ -426,6 +428,10 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
         with open(os.path.dirname(file) + '/labeled_imgid.txt','w+') as f:
            f.write("".join(paths))
         mmcv.dump(train_annotation,file)
+        
+        for i in range(1,7):
+            print('new class '+str(i)+': '+str(label_all_.count(i)))
+        
     return percent
 
 def updateoracle(dataloader, oracle_anno: str = "/data01/gpl/ALDataset/BITVehicle_Dataset/annotations/oracle_imgid.txt",
@@ -572,13 +578,17 @@ def main(args):
         print("Start training")
         start_time = time.time()
         # TODO: 开始训�?
-        for epoch in range(args.start_epoch, args.total_epochs):
+        if cycle==0:
+            total = args.total_epochs
+        else:
+            total = args.each_epochs
+        for epoch in range(args.start_epoch, total):
             train_one_epoch(task_model, task_optimizer, data_loader, device, cycle, epoch, args.print_freq)
             task_lr_scheduler.step()
             # evaluate after pre-set epoch
             # 在调试阶段，此处删除test部分
             if not eval(args.debug):
-                if (epoch + 1) == args.total_epochs:
+                if (epoch + 1) == total:
                     if 'coco' in args.dataset:
                         coco_evaluate(task_model, data_loader_test)
                     elif 'voc' in args.dataset:
@@ -770,6 +780,8 @@ if __name__ == "__main__":
     parser.add_argument('--task_epochs', default=1, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('-e', '--total_epochs', default=20, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--each_epochs', default=5, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--cycles', default=10, type=int, metavar='N',
                         help='number of cycles epochs to run')

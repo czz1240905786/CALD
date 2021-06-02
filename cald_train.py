@@ -408,7 +408,7 @@ def save2file(dataloader,file : str = "/data01/gpl/ALDataset/BITVehicle_Dataset/
                 # move imgs from valid_folder to train_folder
                 shutil.move(os.path.join(imgfolder_valid,paths[ind]),os.path.join(imgfolder_train,paths[ind]))
         scorce_csv = pd.DataFrame({'score':scores_})
-        scorce_csv.to_csv('/home/czz/AL/CALD/result/scores_output_cycle'+str(cycle)+'.csv')
+        scorce_csv.to_csv('./result/scores_output_cycle'+str(cycle)+'.csv')
         index_score = np.array(score_all_)>0.6
         score_all_0_6 = np.array(score_all_)[index_score]
         percent = len(list(score_all_0_6))/len(score_all_)
@@ -624,7 +624,7 @@ def main(args):
                         font_scale=2)
                     mmcv.imwrite(a,'./result_image_ora/cycle'+str(cycle)+'/image_ora'+str(i)+'cycle'+str(cycle)+'.png')
                 scorce_csv = pd.DataFrame({'score':scores_})
-                scorce_csv.to_csv('/home/czz/AL/CALD/result/scores_output_ora_cycle'+str(cycle)+'.csv')
+                scorce_csv.to_csv('./result/scores_output_ora_cycle'+str(cycle)+'.csv')
                 plt.figure()
                 plt.hist(np.array(score_all_), bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
                 plt.savefig('./result_image_ora/cycle_'+str(cycle)+'.png')
@@ -711,7 +711,7 @@ if __name__ == "__main__":
                         help='number of total epochs to run')
     parser.add_argument('--each_epochs', default=5, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('--cycles', default=10, type=int, metavar='N',
+    parser.add_argument('--cycles', default=50, type=int, metavar='N',
                         help='number of cycles epochs to run')
     parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')

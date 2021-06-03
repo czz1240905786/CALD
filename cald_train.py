@@ -594,7 +594,7 @@ def main(args):
             uncertainty, _cls_corrs, outputs_all = get_uncertainty(task_model, unlabeled_loader, augs, num_classes, args)
             # 此部分应该对uncertainty正向排序，因为这些图特别不准，因此应该放到oracle_pool里面
             arg_oracle = np.argsort(np.array(uncertainty))
-            tobe_oracle_set_past = arg_oracle[:int(oracle_num)]
+            tobe_oracle_set_past = arg_oracle[:int(np.exp(-cycle*1.5/args.time_parameter)*(oracle_num-10)+10)]
             # array([62,  3, 75, 26, 19, 57, 11, 41,  6, 76])
             tobe_oracle_set = list(torch.tensor(unlabeled_set)[tobe_oracle_set_past].numpy())
             # tensor([66, 58, 14,  1, 48,  2, 31, 73,  0, 70])
@@ -631,9 +631,11 @@ def main(args):
             
             updateoracle(oracle_loader)
 
+            mr = (args.mr-1)*np.exp(-cycle/args.time_parameter)+1.1
+
             # TODO:此处应该对uncertainty反向排序，用作labeled_pool的一部分
             arg = np.argsort(-np.array(uncertainty))
-            cls_corrs_set = arg[:int(args.mr * budget_num)] # mutual range
+            cls_corrs_set = arg[:int(mr * budget_num)] # mutual range
             # array([58, 66, 47, 15, 64, 55, 32, 59, 56, 13, 31, 33])
             cls_corrs = [_cls_corrs[i] for i in cls_corrs_set]
             # labeled_loader = DataLoader(dataset_aug, batch_size=1, sampler=SubsetSequentialSampler(labeled_set),
@@ -694,6 +696,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description=__doc__)
+    parser.add_argument('--time-parameter', default=10, help='time-parameter')
     parser.add_argument('--budget-num', default=60, help='num of budget')
     parser.add_argument('--oracle-num', default=50, help='num of oracle')
     parser.add_argument('--initlabeled', default=980, help='num of init labeled')
@@ -743,7 +746,7 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('-m', '--no-mutual', help="without mutual information",
                         action="store_true")
-    parser.add_argument('-mr', default=1.2, type=float, help='mutual range')
+    parser.add_argument('-mr', default=5, type=float, help='mutual range')
     parser.add_argument('-bp', default=1.3, type=float, help='base point')
     parser.add_argument("--pretrained", dest="pretrained", help="Use pre-trained models from the modelzoo",
                         action="store_true")

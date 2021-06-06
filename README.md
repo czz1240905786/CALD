@@ -16,35 +16,14 @@ This repo is the official implementation of CALD: [**Consistency-basd Active Lea
 - terminaltables=3.1.0
 ## Quick start
 ```
-python cald_train.py --dataset voc2012 --data-path your_data_path --model faster
+python cald_train.py --dataset coco --data-path your_data_path
 ``` 
-* 方法一：按照下列数据存放规则，每次需要维护`labeled_annotation`，`unlabeled_imgid`以及`oracle_imgid`。并且每次需要更新`unlabeled_pool`，`labeled_pool`以及`oracle_pool`
-```
-//data01/zyh/ALDataset
-|—— annotations
-|   |—— labeled_annotation.json
-|   |—— test_annotation.json
-|   |—— unlabeled_imgid.json
-|   |—— oracle_imgid.txt
-|—— unlabeled_pool
-|—— labeled_pool
-|—— test_pool
-|—— oracle_pool
-```
+# 中文介绍
+本仓库为Dian团队智慧交通组开发，一款可以用于自动打标的脚本。基础代码仓库参考于https://github.com/we1pingyu/CALD，我们在其中进行了一部分删改，具体包括：
+1. 搭建所有自动打标工作流，初始时刻图片分为labeled_pool和unlabeled_pool，前者有人工打标，后者为纯图片。每次模型在labeled_pool中训练，在unlabeled_pool中计算每张图片的难易程度，将一部分容易的图片放入labeled_pool中，并且将模型输出结果作为真实标注，将一部分困难的图片放入oracle_pool中等待人工打标。
+2. 加入COCO2labelme脚本，方便重新二次打标。
+3. 数据可视化输出。
 
-* $\bf{Task}$
-1. 将原有`BITVehicle`数据集选择一种规则存放
-2. 反向排序`Metric`，选取一定`budget`图片
-3. 输出并维护`oracle_imgid`和`unlabeled_imgid`
-
-程序流程：
-在得到uncertainty之后进行两次排序，
-正向排序：越小代表越不准，放到oracle里面
-反向排序：越小代表越准，放到labeled_pool里面
-
-有一个问题是：原本论文觉得选择的图片应该尽量和已选择的图片的class差别尽量大一点好，但是我们这边需要考虑这个问题吗？
-
-TODO:
-1. 先让模型运行起来并不要报错
-2. 确认oracle_pool里面确实存放不准的图片
-3. 将oracle_imgid写入txt文件
+在BITVehicle_Dataset数据集上运行结果。
+![](APresult.png)
+![](image49cycle9.png)
